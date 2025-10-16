@@ -108,6 +108,51 @@ services:
     restart: unless-stopped
 
   # ==============================================
+  # Celery Beat (Scheduled Tasks)
+  # ==============================================
+  celery-beat:
+    build:
+      context: ./services/orchestrator-service
+      dockerfile: Dockerfile
+    container_name: autopublisher_celery_beat
+    volumes:
+      - ./services/orchestrator-service/app:/app/app
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=celery-beat
+      - REDIS_URL=redis://redis:6379/0
+    command: celery -A app.core.celery_app beat --loglevel=info
+    networks:
+      - autopublisher_network
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # ==============================================
+  # Flower (Celery Monitoring)
+  # ==============================================
+  flower:
+    build:
+      context: ./services/orchestrator-service
+      dockerfile: Dockerfile
+    container_name: autopublisher_flower
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    command: celery -A app.core.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    networks:
+      - autopublisher_network
+    depends_on:
+      - redis
+      - celery-worker
+    restart: unless-stopped
+
+  # ==============================================
   # PostgreSQL Database
   # ==============================================
   postgres:
