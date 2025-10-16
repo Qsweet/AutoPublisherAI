@@ -7,6 +7,17 @@ It's the brain of the AutoPublisherAI system.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import sys
+from pathlib import Path
+
+# Add shared directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'shared'))
+
+try:
+    from middleware.request_id import RequestIDMiddleware
+    has_middleware = True
+except ImportError:
+    has_middleware = False
 from fastapi.responses import JSONResponse
 import logging
 from contextlib import asynccontextmanager
@@ -81,12 +92,24 @@ app = FastAPI(
 )
 
 # CORS middleware configuration
+# Add Request ID Middleware
+if has_middleware:
+    app.add_middleware(RequestIDMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+        allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8080",
+    ],,  # In production, replace with specific origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 
 

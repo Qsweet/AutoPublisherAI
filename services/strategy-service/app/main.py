@@ -7,6 +7,17 @@ FastAPI application for content strategy generation and planning.
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import sys
+from pathlib import Path
+
+# Add shared directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'shared'))
+
+try:
+    from middleware.request_id import RequestIDMiddleware
+    has_middleware = True
+except ImportError:
+    has_middleware = False
 
 from .core.config import get_settings
 from .api import strategy
@@ -59,12 +70,24 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# Add Request ID Middleware
+if has_middleware:
+    app.add_middleware(RequestIDMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify allowed origins
+        allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8080",
+    ],,  # In production, specify allowed origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 
 # Include routers

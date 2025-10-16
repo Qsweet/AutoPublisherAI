@@ -7,18 +7,33 @@ This is the core FastAPI application that handles all content generation request
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import logging
+import sys
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.api import content
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Add shared directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'shared'))
+
+try:
+    from logging.logger import setup_logging
+    from middleware.request_id import RequestIDMiddleware
+    logger = setup_logging(
+        service_name="content-service",
+        log_level=settings.LOG_LEVEL,
+        json_format=not settings.DEBUG
+    )
+    has_middleware = True
+except ImportError:
+    import logging
+    logging.basicConfig(
+        level=getattr(logging, settings.LOG_LEVEL),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+    has_middleware = False
 
 
 @asynccontextmanager
@@ -47,13 +62,25 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Add Request ID Middleware
+if has_middleware:
+    app.add_middleware(RequestIDMiddleware)
+
 # CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8080",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 
 
