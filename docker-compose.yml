@@ -1,0 +1,161 @@
+version: '3.8'
+
+services:
+  # ==============================================
+  # Content Generation Service
+  # ==============================================
+  content-service:
+    build:
+      context: ./services/content-service
+      dockerfile: Dockerfile
+    container_name: autopublisher_content_service
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./services/content-service/app:/app/app
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=content-service
+      - REDIS_URL=redis://redis:6379/0
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - autopublisher_network
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+
+  # ==============================================
+  # Publishing Service
+  # ==============================================
+  publishing-service:
+    build:
+      context: ./services/publishing-service
+      dockerfile: Dockerfile
+    container_name: autopublisher_publishing_service
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./services/publishing-service/app:/app/app
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=publishing-service
+      - REDIS_URL=redis://redis:6379/0
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - autopublisher_network
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+
+  # ==============================================
+  # Orchestrator Service
+  # ==============================================
+  orchestrator-service:
+    build:
+      context: ./services/orchestrator-service
+      dockerfile: Dockerfile
+    container_name: autopublisher_orchestrator_service
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./services/orchestrator-service/app:/app/app
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=orchestrator-service
+      - REDIS_URL=redis://redis:6379/0
+      - CONTENT_SERVICE_URL=http://content-service:8000
+      - PUBLISHING_SERVICE_URL=http://publishing-service:8000
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - autopublisher_network
+    depends_on:
+      - redis
+      - postgres
+      - content-service
+      - publishing-service
+    restart: unless-stopped
+
+  # ==============================================
+  # Celery Worker (Background Tasks)
+  # ==============================================
+  celery-worker:
+    build:
+      context: ./services/orchestrator-service
+      dockerfile: Dockerfile
+    container_name: autopublisher_celery_worker
+    volumes:
+      - ./services/orchestrator-service/app:/app/app
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=celery-worker
+      - REDIS_URL=redis://redis:6379/0
+      - CONTENT_SERVICE_URL=http://content-service:8000
+      - PUBLISHING_SERVICE_URL=http://publishing-service:8000
+    command: celery -A app.core.celery_app worker --loglevel=info
+    networks:
+      - autopublisher_network
+    depends_on:
+      - redis
+      - postgres
+      - content-service
+      - publishing-service
+    restart: unless-stopped
+
+  # ==============================================
+  # PostgreSQL Database
+  # ==============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: autopublisher_postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    networks:
+      - autopublisher_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==============================================
+  # Redis (Task Queue & Cache)
+  # ==============================================
+  redis:
+    image: redis:7-alpine
+    container_name: autopublisher_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - autopublisher_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# ==============================================
+# Volumes
+# ==============================================
+volumes:
+  postgres_data:
+    driver: local
+
+# ==============================================
+# Networks
+# ==============================================
+networks:
+  autopublisher_network:
+    driver: bridge
+
