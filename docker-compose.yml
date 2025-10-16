@@ -52,6 +52,31 @@ services:
     restart: unless-stopped
 
   # ==============================================
+  # Strategy Service (Content Strategy AI)
+  # ==============================================
+  strategy-service:
+    build:
+      context: ./services/strategy-service
+      dockerfile: Dockerfile
+    container_name: autopublisher_strategy_service
+    ports:
+      - "8004:8000"
+    volumes:
+      - ./services/strategy-service/app:/app/app
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=strategy-service
+      - REDIS_URL=redis://redis:6379/0
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - autopublisher_network
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+
+  # ==============================================
   # Orchestrator Service
   # ==============================================
   orchestrator-service:
