@@ -229,3 +229,23 @@ networks:
   autopublisher_network:
     driver: bridge
 
+
+  # Auth Service
+  auth-service:
+    build: ./services/auth-service
+    container_name: autopublisher_auth
+    ports:
+      - "8005:8000"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=postgres
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - REDIS_HOST=redis
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - autopublisher_network
+    restart: unless-stopped
