@@ -47,9 +47,9 @@ class Settings(BaseSettings):
     # ==============================================
     # Database Configuration
     # ==============================================
-    POSTGRES_USER: str = "autopublisher"
-    POSTGRES_PASSWORD: str = "password"
-    POSTGRES_DB: str = "autopublisher_db"
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
+    POSTGRES_DB: str
     POSTGRES_HOST: str = "postgres"
     POSTGRES_PORT: int = 5432
     
