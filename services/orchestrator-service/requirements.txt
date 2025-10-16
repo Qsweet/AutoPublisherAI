@@ -46,3 +46,8 @@ pytest==7.4.4
 pytest-asyncio==0.23.3
 httpx==0.26.0
 
+
+# Authentication and Security
+python-jose[cryptography]>=3.3.0
+PyJWT>=2.8.0
+redis>=5.0.0
