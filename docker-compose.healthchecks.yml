@@ -1,0 +1,231 @@
+# Docker Compose with Health Checks
+# This file shows how to add health checks to all services
+
+version: '3.8'
+
+services:
+  # PostgreSQL with health check
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - autopublisher
+
+  # Redis with health check
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - autopublisher
+
+  # Auth Service with health check
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    ports:
+      - "8005:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - autopublisher
+
+  # Content Service with health check
+  content-service:
+    build:
+      context: ./services/content-service
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - autopublisher
+
+  # Publishing Service with health check
+  publishing-service:
+    build:
+      context: ./services/publishing-service
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - autopublisher
+
+  # Orchestrator Service with health check
+  orchestrator-service:
+    build:
+      context: ./services/orchestrator-service
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CONTENT_SERVICE_URL=http://content-service:8000
+      - PUBLISHING_SERVICE_URL=http://publishing-service:8000
+    depends_on:
+      redis:
+        condition: service_healthy
+      content-service:
+        condition: service_healthy
+      publishing-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - autopublisher
+
+  # Strategy Service with health check
+  strategy-service:
+    build:
+      context: ./services/strategy-service
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - autopublisher
+
+  # Celery Worker with health check
+  celery-worker:
+    build:
+      context: ./services/orchestrator-service
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app worker --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CONTENT_SERVICE_URL=http://content-service:8000
+      - PUBLISHING_SERVICE_URL=http://publishing-service:8000
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.core.celery_app inspect ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - autopublisher
+
+  # Celery Beat with health check
+  celery-beat:
+    build:
+      context: ./services/orchestrator-service
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app beat --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/celerybeat.pid"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - autopublisher
+
+  # Flower (Celery monitoring) with health check
+  flower:
+    build:
+      context: ./services/orchestrator-service
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - autopublisher
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  autopublisher:
+    driver: bridge
+

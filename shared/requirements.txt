@@ -8,3 +8,10 @@ redis>=5.0.0
 python-multipart>=0.0.6
 aiohttp>=3.9.0
 
+
+# Security
+bleach==6.1.0
+python-magic==0.4.27
+
+# Monitoring
+redis==5.0.1
